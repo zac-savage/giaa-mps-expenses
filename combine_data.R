@@ -108,6 +108,30 @@ time_series[monetary_cols] <- lapply(time_series[monetary_cols], clean_currency)
 time_series <- time_series |>
   rename(mp_name = x_mp_s_name)
 
+# Sort out missing total values
+spend_cols <- c("office_spend",
+                "staffing_spend",
+                "wind_up_spend",
+                "accommodation_spend",
+                "travel_and_subsistence_spend",
+                "other_costs_spend",
+                "start_up_spend"
+                )
+
+time_series <- time_series |>
+  mutate(derived_total = rowSums(across(all_of(spend_cols)), na.rm = TRUE))
+
+# Validate that this summary is sensible
+time_series |>
+  ggplot(aes(x = derived_total, y = overall_total_spend_for_this_financial_year)) +
+  geom_point() +
+  labs(x = "Summarised from spend categories",
+       y = "Total found in data") +
+  theme_bw()
+
+# Save output
+saveRDS(time_series, here("outputs", "time_series.RDS"))
+
 # Sense check number of MPs
 time_series |>
   group_by(start_year) |>
@@ -169,5 +193,4 @@ expenses_24_25_map |>
 
 # Save some data output
 saveRDS(expenses_24_25_map, here("outputs", "expenses_24_25_map.RDS"))
-saveRDS(time_series, here("outputs", "time_series.RDS"))
 saveRDS(data_list, here("outputs", "data_list.RDS"))
