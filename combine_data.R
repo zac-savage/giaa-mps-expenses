@@ -14,6 +14,17 @@ read_file <- function(file) {
            colClasses = "character" # Issues with mismatched col types so forcing character
            ) |>
     clean_names() |>
+    # Rename
+    rename(office_budget = any_of(c("office_maximum_budget_available", "office_budget")),
+           staffing_budget = any_of(c("staffing_maximum_budget_available", "staffing_budget")),
+           wind_up_budget = any_of(c("wind_up_maximum_budget_available", "winding_up_budget")),
+           wind_up_spend = any_of(c("winding_up_spend", "wind_up_spend")),
+           accommodation_budget = any_of(c("accommodation_maximum_budget_available", "accommodation_budget")),
+           travel_and_subsistence_budget = any_of(c("travel_and_subsistence_maximum_budget_available", "travel_and_subsistence_uncapped")),
+           other_costs_budget = any_of(c("other_costs_maximum_budget_available", "other_costs_uncapped")),
+           remaining_wind_up_budget  = any_of(c("remaining_wind_up_budget", "remaining_winding_up_budget")),
+           
+           ) |>
     mutate(source_file = basename(file))
 }
 
@@ -62,15 +73,37 @@ time_series |>
 
 message("Function to extract spend is behaving as expected")
 
+# Remove the test column 
+time_series <- time_series |> select(-office_spend_clean)
+
 # Apply function accross the data
-time_series$overall_total_spend_for_this_financial_year <- clean_currency(time_series$overall_total_spend_for_this_financial_year)
-time_series$office_spend <- clean_currency(time_series$office_spend)
-time_series$staffing_spend <- clean_currency(time_series$staffing_spend)
-time_series$subtotal_of_office_running_costs <- clean_currency(time_series$subtotal_of_office_running_costs)
-time_series$accommodation_spend <- clean_currency(time_series$accommodation_spend)
-time_series$travel_and_subsistence_spend <- clean_currency(time_series$travel_and_subsistence_spend)
-time_series$subtotal_of_other_parliamentary_costs <- clean_currency(time_series$subtotal_of_other_parliamentary_costs)
-time_series$travel_and_subsistence_uncapped <- clean_currency(time_series$travel_and_subsistence_uncapped)
+monetary_cols <- c(
+  "office_budget",
+  "office_spend",
+  "remaining_office_budget",
+  "staffing_budget",
+  "staffing_spend",
+  "remaining_staffing_budget",
+  "wind_up_budget",
+  "wind_up_spend",
+  "remaining_wind_up_budget",
+  "subtotal_of_office_running_costs",
+  "accommodation_budget",
+  "accommodation_spend",
+  "remaining_accommodation_budget",
+  "travel_and_subsistence_budget",
+  "travel_and_subsistence_spend",
+  "other_costs_budget",
+  "other_costs_spend",
+  "subtotal_of_other_parliamentary_costs",
+  "overall_total_spend_for_this_financial_year",
+  "start_up_maximum_budget_available",
+  "start_up_spend",
+  "remaining_start_up_budget"
+)
+
+time_series[monetary_cols] <- lapply(time_series[monetary_cols], clean_currency)
+
 # Further tidying of the data
 time_series <- time_series |>
   rename(mp_name = x_mp_s_name)
@@ -78,7 +111,7 @@ time_series <- time_series |>
 # Sense check number of MPs
 time_series |>
   group_by(start_year) |>
-  summarise(n_mp = length(unique(x_mp_s_name))) |>
+  summarise(n_mp = length(unique(mp_name))) |>
   mutate(election_year = if_else(start_year %in% c(2015, 2017, 2019, 2024), "Yes", "No")) |>
   ggplot(aes(x = start_year, y = n_mp, fill = election_year)) +
   geom_col() +
@@ -100,7 +133,7 @@ map <- read_sf(here("data", "Westminster_Parliamentary_Constituencies_July_2024_
 # Previous constituency is marked for name before redraw
 # New constituency name is also marked where the MP moved constituency
 
-time_series_24 <- time_series |>
+expenses_24_25 <- time_series |>
   mutate(constituency = constituency_since_5_july_2024) |>
   filter(start_year > 2023) |> # Only final year of data
   filter(constituency != "N/A") |> # Remove NA (lost seat after redraw of map)
@@ -115,21 +148,26 @@ time_series_24 <- time_series |>
 
 # Get unique values from each to test 
 map_cons <- unique(map$constituency) |> sort()
-data_cons <- unique(time_series_24$constituency) |> sort()
+data_cons <- unique(expenses_24_25$constituency) |> sort()
 
 length(data_cons[data_cons %in% map_cons])
 message("All constituency names now match!")
 
 # Join to map
-time_series_24_map <- left_join(map, time_series_24)
+expenses_24_25_map <- left_join(map, expenses_24_25)
 
 # Test visually with travel spend
-time_series_24_map |>
+expenses_24_25_map |>
   st_simplify(dTolerance = 1000) |>
-  ggplot(aes(fill = travel_and_subsistence_uncapped)) +
+  ggplot(aes(fill = travel_and_subsistence_budget)) +
   geom_sf(colour = NA) + 
   scale_fill_viridis_c() +
   labs(title = "Constituency map of travel spend",
          subtitle = "Post 2024 election with redrawn election map",
          fill = "Total travel and subsistence spend (£)") +
   theme_minimal()
+
+# Save some data output
+saveRDS(expenses_24_25_map, here("outputs", "expenses_24_25_map.RDS"))
+saveRDS(time_series, here("outputs", "time_series.RDS"))
+saveRDS(data_list, here("outputs", "data_list.RDS"))
