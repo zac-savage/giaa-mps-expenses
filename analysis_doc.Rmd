@@ -1,0 +1,141 @@
+---
+title: "Analysis of MP's expenses"
+output: html_document
+date: "2026-05-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+library(tidyverse)
+library(here)
+```
+
+```{r load_data}
+time_series <- readRDS(here("outputs", "time_series.RDS"))
+```
+
+```{r key_info}
+election_years <- c(2015, 2017, 2019, 2024)
+```
+
+```{r spending_over_time_individual}
+time_series |>
+  ggplot(aes(x = year_start,
+             y = derived_total)) +
+  geom_jitter() +
+  geom_boxplot(aes(group = year_start)) +
+  geom_smooth()
+
+```
+
+```{r spending_over_time_summaries}
+# Summarise total spend by year
+spend_by_year <- time_series |>
+  group_by(year_start) |>
+  summarise(
+    total_spend = sum(derived_total, na.rm = TRUE),
+    average_spend = mean(derived_total, na.rm = TRUE),
+    n_mps = n_distinct(p_id)
+  ) |>
+  arrange(year_start)
+
+# Plot total spend over time
+ggplot(spend_by_year, aes(x = year_start, y = total_spend)) +
+  geom_col(fill = "steelblue") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Total MP Expenses by Financial Year",
+    x = "Financial Year",
+    y = "", 
+    subtitle = "Total Spend (£)"
+  ) +
+  theme_minimal()
+```
+
+```{r spend-by-category}
+spend_cols <- c("office_spend",
+                "staffing_spend",
+                "wind_up_spend",
+                "accommodation_spend",
+                "travel_and_subsistence_spend",
+                "other_costs_spend",
+                "start_up_spend"
+                )
+
+spend_by_category <- time_series |>
+  select(p_id, start_year, all_of(spend_cols)) |>
+  pivot_longer(
+    cols = all_of(spend_cols),
+    names_to = "category",
+    values_to = "spend"
+  ) |>
+  group_by(start_year, category) |>
+  summarise(mean_spend = mean(spend, na.rm = TRUE),
+            total_spend = sum(spend, na.rm = TRUE),
+            .groups = "drop")
+
+spend_by_category |>
+  ggplot(aes(x = start_year, y = total_spend, colour = category)) +
+  geom_line() +
+  geom_point(size = 1.5) +
+  geom_vline(
+    xintercept = election_years,
+    linetype = "dashed",
+    colour = "red",
+    alpha = 0.7
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  # facet_wrap(~ category, scales = "free_y") +
+  labs(
+    title = "Total MP Spend (£) by Category and Financial Year",
+    subtitle = "Dashed lines indicate UK General Elections",
+    x = "Financial Year",
+    y = ""
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r staffing_spend_vs_budget}
+staffing_compare <- time_series |>
+  group_by(start_year) |>
+  summarise(
+    mean_budget = mean(staffing_budget, na.rm = TRUE),
+    mean_spend  = mean(staffing_spend, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  pivot_longer(
+    cols = c(mean_budget, mean_spend),
+    names_to = "type",
+    values_to = "value"
+  ) |>
+  mutate(type = recode(type,
+    "mean_budget" = "Budget",
+    "mean_spend"  = "Spend"
+  ))
+
+staffing_compare |>
+  ggplot(aes(x = start_year, y = value, colour = type)) +
+  geom_line() +
+  geom_point(size = 1.5) +
+  geom_vline(
+    xintercept = election_years,
+    linetype = "dashed",
+    colour = "red",
+    alpha = 0.7
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_colour_manual(values = c("Budget" = "steelblue", "Spend" = "darkorange")) +
+  labs(
+    title = "Mean MP Staffing Budget vs Spend by Financial Year",
+    subtitle = "Dashed lines indicate UK General Elections",
+    x = "Financial Year",
+    y = "Mean (£)",
+    colour = NULL
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
