@@ -189,7 +189,7 @@ time_series |>
 ```{r}
 expenses_24_25_map |>
   st_simplify(dTolerance = 100) |>
-  ggplot(aes(fill = travel_and_subsistence_budget)) +
+  ggplot(aes(fill = travel_and_subsistence_spend)) +
   geom_sf(colour = NA) + 
   scale_fill_viridis_c() +
   labs(title = "Travel spend in 24/25 between constituencies",
