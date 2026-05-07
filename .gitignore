@@ -4,3 +4,4 @@
 .Ruserdata
 /data/*.csv
 /data/*.gpkg
+*.pptx
