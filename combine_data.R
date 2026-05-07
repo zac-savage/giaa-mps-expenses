@@ -135,6 +135,7 @@ time_series <- time_series |>
   group_by(p_id) |>
   mutate(
     new_mp = fy_year_start == min(fy_year_start, na.rm = TRUE),
+    final_year = fy_year_start == max(fy_year_start, na.rm = TRUE),
     years_as_mp = row_number()
   ) |>
   ungroup() |>
@@ -233,6 +234,17 @@ time_series$london_seat <- time_series$constituency  %in% london_seats |
   time_series$previous_constituency  %in% london_seats |
   time_series$constituency_since_5_july_2024  %in% london_seats
 
+# Add inflation data
+inflation_ons <- data.frame(
+  fy_year_start = seq(2014, 2024, 1),
+  annual_inflation = c(1.5, 0.4, 1.0, 2.6, 2.3, 1.7, 1.0, 2.5, 7.9, 6.8, 3.3)) |>
+  mutate(
+    inflation_multiplier = 1 + (annual_inflation / 100),
+    cumulative_index = cumprod(inflation_multiplier)
+  )
+
+time_series <- time_series |> left_join(inflation_ons, by = "fy_year_start")
+
 # Save output
 saveRDS(time_series, here("outputs", "time_series.RDS"))
 
@@ -322,7 +334,7 @@ expenses_24_25_map |>
        colour = "London seat?") +
   theme_minimal()
 
-# Test london seat mapping
+# Test distance mapping
 expenses_24_25_map |>
   st_simplify(dTolerance = 50) |>
   ggplot(aes(fill = dist_westminster_km,
