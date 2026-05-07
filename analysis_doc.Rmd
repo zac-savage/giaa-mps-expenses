@@ -11,10 +11,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r libraries}
 library(tidyverse)
 library(here)
+library(sf)
+library(mgcv)
+library(gratia)
 ```
 
 ```{r load_data}
 time_series <- readRDS(here("outputs", "time_series.RDS"))
+expenses_24_25_map <- readRDS(here("outputs", "expenses_24_25_map.RDS"))
+
 ```
 
 ```{r key_info}
@@ -23,10 +28,10 @@ election_years <- c(2015, 2017, 2019, 2024)
 
 ```{r spending_over_time_individual}
 time_series |>
-  ggplot(aes(x = year_start,
+  ggplot(aes(x = fy_year_start,
              y = derived_total)) +
   geom_jitter() +
-  geom_boxplot(aes(group = year_start)) +
+  geom_boxplot(aes(group = fy_year_start)) +
   geom_smooth()
 
 ```
@@ -34,16 +39,16 @@ time_series |>
 ```{r spending_over_time_summaries}
 # Summarise total spend by year
 spend_by_year <- time_series |>
-  group_by(year_start) |>
+  group_by(fy_year_start) |>
   summarise(
     total_spend = sum(derived_total, na.rm = TRUE),
     average_spend = mean(derived_total, na.rm = TRUE),
     n_mps = n_distinct(p_id)
   ) |>
-  arrange(year_start)
+  arrange(fy_year_start)
 
 # Plot total spend over time
-ggplot(spend_by_year, aes(x = year_start, y = total_spend)) +
+ggplot(spend_by_year, aes(x = fy_year_start, y = total_spend)) +
   geom_col(fill = "steelblue") +
   scale_y_continuous(labels = scales::comma) +
   labs(
@@ -66,19 +71,19 @@ spend_cols <- c("office_spend",
                 )
 
 spend_by_category <- time_series |>
-  select(p_id, start_year, all_of(spend_cols)) |>
+  select(p_id, fy_year_start, all_of(spend_cols)) |>
   pivot_longer(
     cols = all_of(spend_cols),
     names_to = "category",
     values_to = "spend"
   ) |>
-  group_by(start_year, category) |>
+  group_by(fy_year_start, category) |>
   summarise(mean_spend = mean(spend, na.rm = TRUE),
             total_spend = sum(spend, na.rm = TRUE),
             .groups = "drop")
 
 spend_by_category |>
-  ggplot(aes(x = start_year, y = total_spend, colour = category)) +
+  ggplot(aes(x = fy_year_start, y = total_spend, colour = category)) +
   geom_line() +
   geom_point(size = 1.5) +
   geom_vline(
@@ -101,24 +106,20 @@ spend_by_category |>
 
 ```{r staffing_spend_vs_budget}
 staffing_compare <- time_series |>
-  group_by(start_year) |>
+  group_by(fy_year_start) |>
   summarise(
-    mean_budget = mean(staffing_budget, na.rm = TRUE),
+    total_budget = sum(staffing_budget, na.rm = TRUE),
+    total_spend  = sum(staffing_spend, na.rm = TRUE),
+    mean_budget  = mean(staffing_budget, na.rm = TRUE),
     mean_spend  = mean(staffing_spend, na.rm = TRUE),
     .groups = "drop"
   ) |>
-  pivot_longer(
-    cols = c(mean_budget, mean_spend),
-    names_to = "type",
-    values_to = "value"
-  ) |>
-  mutate(type = recode(type,
-    "mean_budget" = "Budget",
-    "mean_spend"  = "Spend"
-  ))
+  filter(fy_year_start >= 2014)
 
-staffing_compare |>
-  ggplot(aes(x = start_year, y = value, colour = type)) +
+total_staffing_time <- staffing_compare |>
+  select(fy_year_start, total_budget, total_spend) |>
+  pivot_longer(cols = -fy_year_start) |>
+  ggplot(aes(x = fy_year_start, y = value, colour = name)) +
   geom_line() +
   geom_point(size = 1.5) +
   geom_vline(
@@ -128,14 +129,136 @@ staffing_compare |>
     alpha = 0.7
   ) +
   scale_y_continuous(labels = scales::comma) +
-  scale_colour_manual(values = c("Budget" = "steelblue", "Spend" = "darkorange")) +
+  scale_x_continuous(breaks = seq(1, 3000, 1)) +
   labs(
-    title = "Mean MP Staffing Budget vs Spend by Financial Year",
+    title = "Total MP Staffing Budget vs Spend (£) by Financial Year",
     subtitle = "Dashed lines indicate UK General Elections",
-    x = "Financial Year",
-    y = "Mean (£)",
+    x = "Financial Year Start",
+    y = "",
     colour = NULL
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+mean_staffing_time <- staffing_compare |>
+  select(fy_year_start, mean_budget, mean_spend) |>
+  pivot_longer(cols = -fy_year_start) |>
+  ggplot(aes(x = fy_year_start, y = value, colour = name)) +
+  geom_line() +
+  geom_point(size = 1.5) +
+  geom_vline(
+    xintercept = election_years,
+    linetype = "dashed",
+    colour = "red",
+    alpha = 0.7
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_x_continuous(breaks = seq(1, 3000, 1)) +
+  labs(
+    title = "Mean MP Staffing Budget vs Spend (£) by Financial Year",
+    subtitle = "Dashed lines indicate UK General Elections",
+    x = "Financial Year Start",
+    y = "",
+    colour = NULL
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+cowplot::plot_grid(total_staffing_time, mean_staffing_time)
 ```
+
+```{r}
+time_series |>
+  filter(fy_year_start >= 2014) |>
+  group_by(new_mp, fy_year_start) |>
+  summarise(staff_spend = mean(staffing_spend, na.rm = T)) |>
+  ggplot(aes(x = fy_year_start, y = staff_spend, colour = new_mp)) +
+  geom_line() +
+  geom_point(size = 1.5) +
+  geom_vline(
+    xintercept = election_years,
+    linetype = "dashed",
+    colour = "red",
+    alpha = 0.7
+  )
+
+```
+
+```{r}
+expenses_24_25_map |>
+  st_simplify(dTolerance = 100) |>
+  ggplot(aes(fill = travel_and_subsistence_budget)) +
+  geom_sf(colour = NA) + 
+  scale_fill_viridis_c() +
+  labs(title = "Travel spend in 24/25 between constituencies",
+         subtitle = "Post 2024 election with redrawn election map",
+         fill = "£") +
+  theme_minimal()
+```
+
+```{r}
+expenses_24_25_map |>
+  st_simplify(dTolerance = 100) |>
+  ggplot(aes(fill = staffing_spend)) +
+  geom_sf(colour = NA) + 
+  scale_fill_viridis_c() +
+  labs(title = "Staffing spend in 24/25 between constituencies",
+         subtitle = "Post 2024 election with redrawn election map",
+         fill = "£") +
+  theme_minimal()
+```
+
+```{r top-staffing-spenders}
+top_staffing <- time_series |>
+  group_by(p_id, mp_name) |>
+  summarise(
+    total_staffing_spend = sum(staffing_spend, na.rm = TRUE),
+    avg_staffing_spend = mean(staffing_spend, na.rm = TRUE),
+    years_present = n_distinct(year_pair),
+    .groups = "drop"
+  ) |>
+  arrange(desc(total_staffing_spend)) |>
+  slice_head(n = 20)
+
+top_staffing |>
+  ggplot(aes(x = total_staffing_spend, 
+                          y = reorder(mp_name, total_staffing_spend))) +
+  geom_col(fill = "steelblue") +
+  scale_x_continuous(labels = scales::comma) +
+  labs(
+    title = "Top 20 MPs by Total Staffing Spend",
+    subtitle = "Across all available financial years",
+    x = "Total Staffing Spend (£)",
+    y = NULL
+  ) +
+  theme_minimal()
+```
+
+```{r}
+time_series_10y <- time_series |>
+  filter(fy_year_start >= 2014) |>
+  filter(!is.na(derived_total)) |>
+  mutate(p_id = factor(p_id))
+  
+gam_staffing <- bam(
+  derived_total ~
+    s(years_as_mp, k = 8) +
+    s(fy_year_start, k = 6) +
+    election_year +
+    london_seat +
+    s(p_id, bs = "re"),
+  data     = time_series_10y,
+  method   = "fREML",
+  discrete = TRUE,
+  nthreads = parallel::detectCores()-1
+)
+
+k.check(gam_staffing)
+
+summary(gam_staffing)
+
+draw(gam_staffing)
+```
+
