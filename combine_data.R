@@ -224,7 +224,8 @@ london_seats <- c(
   "Stratford and Bow BC",
   "Queen's Park and Maida Vale BC",
   "Peckham BC",
-  "West Ham and Beckton BC"
+  "West Ham and Beckton BC",
+  "Bromley and Biggin Hill BC"
 )
 
 # Get london seats from all available consituency columns
@@ -296,24 +297,43 @@ expenses_24_25_map <- left_join(map, expenses_24_25)
 
 # Test visually with travel spend
 expenses_24_25_map |>
-  st_simplify(dTolerance = 1000) |>
-  ggplot(aes(fill = travel_and_subsistence_spend)) +
-  geom_sf(colour = NA) + 
+  st_simplify(dTolerance = 50) |>
+  ggplot(aes(fill = travel_and_subsistence_spend,
+             colour = travel_and_subsistence_spend)) +
+  geom_sf() + 
   scale_fill_viridis_c() +
+  scale_colour_viridis_c() +
   labs(title = "Constituency map of travel spend",
          subtitle = "Post 2024 election with redrawn election map",
-         fill = "Total travel and subsistence spend (£)") +
+         colour = "£",
+         fill = "£") +
   theme_minimal()
 
 # Test london seat mapping
 expenses_24_25_map |>
-  st_simplify(dTolerance = 1000) |>
-  ggplot(aes(fill = london_seat)) +
-  geom_sf(colour = NA) + 
+  st_simplify(dTolerance = 50) |>
+  ggplot(aes(fill = london_seat, colour = london_seat)) +
+  geom_sf() + 
   scale_fill_viridis_d() +
-  labs(title = "Constituency map of travel spend",
+  scale_colour_viridis_d() +
+  labs(title = "Constituency map",
        subtitle = "Post 2024 election with redrawn election map",
-       fill = "London seat") +
+       fill = "London seat?",
+       colour = "London seat?") +
+  theme_minimal()
+
+# Test london seat mapping
+expenses_24_25_map |>
+  st_simplify(dTolerance = 50) |>
+  ggplot(aes(fill = dist_westminster_km,
+             colour = dist_westminster_km)) +
+  geom_sf() + 
+  scale_fill_viridis_c() +
+  scale_colour_viridis_c() +
+  labs(title = "Distance to Westminster",
+       subtitle = "Post 2024 election with redrawn election map",
+       fill = "Km",
+       colour = "Km") +
   theme_minimal()
 
 # Save some data output
