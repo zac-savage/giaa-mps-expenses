@@ -104,6 +104,60 @@ spend_by_category |>
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+```{r stacked-bar-category}
+spend_by_category |>
+  filter(fy_year_start >= 2014) |>
+  group_by(fy_year_start, category) |>
+  summarise(mean_spend = sum(mean_spend, na.rm = TRUE), .groups = "drop") |>
+  ggplot(aes(x = fy_year_start, y = mean_spend, fill = category)) +
+  geom_col() +
+  geom_vline(
+    xintercept = election_years,
+    linetype   = "dashed",
+    colour     = "white",
+    alpha       = 0.7
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Breakdown of MP spend (£) over time",
+    subtitle = "Combined spend (£)",
+    x = "Financial Year",
+    y = "",
+    fill = NULL
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position  = "right",
+    panel.grid.minor = element_blank()
+  )
+  
+spend_by_category |>
+  filter(fy_year_start >= 2014) |>
+  group_by(fy_year_start, category) |>
+  summarise(total_spend = sum(total_spend, na.rm = TRUE), .groups = "drop") |>
+  ggplot(aes(x = fy_year_start, y = total_spend, fill = category)) +
+  geom_col(position = "fill") +
+  geom_vline(
+  xintercept = election_years,
+  linetype   = "dashed",
+  colour     = "white",
+  alpha      = 0.7) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+  title = "Breakdown of MP spend each year (% of total)",
+  subtitle = "Dashed lines mark election years",
+  x = "Financial Year",
+  y = "",
+  fill = NULL) +
+  theme_minimal() +
+  theme(
+    legend.position  = "right",
+    panel.grid.minor = element_blank()
+    )
+```
+
 ```{r staffing_spend_vs_budget}
 staffing_compare <- time_series |>
   group_by(fy_year_start) |>
@@ -244,13 +298,15 @@ time_series_10y <- time_series |>
   
 gam_staffing <- bam(
   derived_total ~
-    s(years_as_mp, k = 8) +
+    s(years_as_mp, k = 6) +
     s(fy_year_start, k = 6) +
+    new_mp +
+    final_year +
     election_year +
     london_seat +
     s(p_id, bs = "re"),
-  data     = time_series_10y,
-  method   = "fREML",
+  data = time_series_10y,
+  method = "fREML",
   discrete = TRUE,
   nthreads = parallel::detectCores()-1
 )
@@ -259,6 +315,48 @@ k.check(gam_staffing)
 
 summary(gam_staffing)
 
-draw(gam_staffing)
+p <- draw(gam_staffing,
+          select = c("s(years_as_mp)",
+                     "s(fy_year_start)"),
+          ci_level = 0.95)
+
+p[[1]] + labs(title = "Years spent as an MP generally leads to less spending", x = "Years as MP") + theme_bw()
+p[[2]] + labs(title = "Overall spending increased rapidly after 2019",
+              x = "Year",
+              subtitle = "Not adjusted for inflation") + theme_bw()
+
 ```
 
+
+```{r}
+time_series_10y$derived_total_deflated <- time_series_10y$derived_total / time_series_10y$cumulative_index
+
+gam_staffing_inflation <- bam(
+  derived_total_deflated ~
+    s(years_as_mp, k = 8) +
+    s(fy_year_start, k = 6) +
+    cumulative_index +
+    new_mp +
+    final_year +
+    election_year +
+    london_seat +
+    s(p_id, bs = "re"),
+  data = time_series_10y,
+  method = "fREML",
+  discrete = TRUE,
+  nthreads = parallel::detectCores()-1
+)
+
+k.check(gam_staffing_inflation)
+
+summary(gam_staffing_inflation)
+
+draw(gam_staffing_inflation,
+          select = c("s(fy_year_start)"),
+          ci_level = 0.95) +
+  labs(title = "Overall spending increased rapidly after 2019",
+       subtitle = "Total values deflated",
+       x = "Year") +
+  theme_bw()
+
+```
